@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
+import VehicleMarkers from "./VehicleMarkers";
 
 export default function Map() {
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
+    const [mapReady, setMapReady] = useState(false);
 
     useEffect(() => {
         if (mapRef.current) return;
@@ -18,6 +20,10 @@ export default function Map() {
             zoom: 11,
         });
 
+        mapRef.current.on("load", () => {
+            setMapReady(true);
+        })
+
         return () => {
             mapRef.current?.remove();
             mapRef.current = null
@@ -25,6 +31,8 @@ export default function Map() {
     }, [])
 
     return (
-        <div ref={mapContainerRef} className="w-full h-full"></div>
+        <div ref={mapContainerRef} className="w-full h-full">
+            {mapReady && <VehicleMarkers map={mapRef.current} />}
+        </div>
     )
 }
