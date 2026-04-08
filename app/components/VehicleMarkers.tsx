@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import maplibregl from "maplibre-gl";
-import { vehicles } from "../data/vehicles";
+import { simulateMovement, vehicles } from "../data/vehicles";
 
 const statusColors: Record<string, string> = {
     moving: "#22c55e",
@@ -132,8 +132,17 @@ export default function VehicleMarkers({ map }: { map: maplibregl.Map | null }) 
         map.on("mouseenter", "unclustered-point", () => { map.getCanvas().style.cursor = "pointer" });
         map.on("mouseleave", "unclustered-point", () => { map.getCanvas().style.cursor = "" });
 
+        const interval = setInterval(() => {
+            simulateMovement();
+            const source = map.getSource("vehicles") as maplibregl.GeoJSONSource;
+            if (source) {
+                source.setData(vehicleToGeojson());
+            }
+        }, 1000);
+
         // cleanup
         return () => {
+            clearInterval(interval);
             if (map.getLayer("clusters")) map.removeLayer("clusters");
             if (map.getLayer("cluster-count")) map.removeLayer("cluster-count");
             if (map.getLayer("unclustered-point")) map.removeLayer("unclustered-point");
