@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import VehicleMarkers from "./VehicleMarkers";
+import Geofences from "./Geofences";
 
 export default function Map() {
     const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -32,7 +33,12 @@ export default function Map() {
 
     return (
         <div ref={mapContainerRef} className="w-full h-full">
-            {mapReady && <VehicleMarkers map={mapRef.current} />}
+            {mapReady && (
+                <>
+                    <Geofences map={mapRef.current} />
+                    <VehicleMarkers map={mapRef.current} />
+                </>
+            )}
         </div>
     )
 }

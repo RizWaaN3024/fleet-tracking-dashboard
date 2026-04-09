@@ -50,7 +50,7 @@ const geofenceColors: Record<string, string> = {
     "delivery-zone": "#22c55e"
 }
 
-export function geofencesRoGeoJSON(): GeoJSON.FeatureCollection {
+export function geofencesToGeoJSON(): GeoJSON.FeatureCollection {
     return {
         type: "FeatureCollection",
         features: geofences.map((gf) => ({
