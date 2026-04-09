@@ -5,6 +5,7 @@ import maplibregl from "maplibre-gl";
 import VehicleMarkers from "./VehicleMarkers";
 import Geofences from "./Geofences";
 import VehicleTrails from "./VehicleTrails";
+import LayerControls from "./LayerControls";
 
 export default function Map() {
     const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -39,6 +40,7 @@ export default function Map() {
                     <Geofences map={mapRef.current} />
                     <VehicleTrails map={mapRef.current} />
                     <VehicleMarkers map={mapRef.current} />
+                    <LayerControls map={mapRef.current} />
                 </>
             )}
         </div>
