@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useEffect, useState } from "react";
 import maplibregl from "maplibre-gl";
-import VehicleMarkers from "./VehicleMarkers";
 import Geofences from "./Geofences";
 import VehicleTrails from "./VehicleTrails";
+import VehicleMarkers from "./VehicleMarkers";
 import LayerControls from "./LayerControls";
+import Sidebar from "./Sidebar";
 
 export default function Map() {
     const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -19,30 +20,33 @@ export default function Map() {
         mapRef.current = new maplibregl.Map({
             container: mapContainerRef.current,
             style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-            center: [77.5946, 12.9716], // Bangalore [longitude, latitude]
+            center: [77.5946, 12.9716],
             zoom: 11,
         });
 
         mapRef.current.on("load", () => {
             setMapReady(true);
-        })
+        });
 
         return () => {
             mapRef.current?.remove();
-            mapRef.current = null
-        }
-    }, [])
+            mapRef.current = null;
+        };
+    }, []);
 
     return (
-        <div ref={mapContainerRef} className="w-full h-full">
-            {mapReady && (
-                <>
-                    <Geofences map={mapRef.current} />
-                    <VehicleTrails map={mapRef.current} />
-                    <VehicleMarkers map={mapRef.current} />
-                    <LayerControls map={mapRef.current} />
-                </>
-            )}
+        <div className="flex flex-1 overflow-hidden">
+            <Sidebar map={mapRef.current} />
+            <div ref={mapContainerRef} className="flex-1 relative">
+                {mapReady && (
+                    <>
+                        <Geofences map={mapRef.current} />
+                        <VehicleTrails map={mapRef.current} />
+                        <VehicleMarkers map={mapRef.current} />
+                        <LayerControls map={mapRef.current} />
+                    </>
+                )}
+            </div>
         </div>
-    )
+    );
 }
