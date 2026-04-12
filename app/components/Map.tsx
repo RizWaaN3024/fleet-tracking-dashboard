@@ -7,11 +7,14 @@ import VehicleTrails from "./VehicleTrails";
 import VehicleMarkers from "./VehicleMarkers";
 import LayerControls from "./LayerControls";
 import Sidebar from "./Sidebar";
+import { useVehicleSocket } from "../hooks/useVehicleSocket";
 
 export default function Map() {
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
     const [mapReady, setMapReady] = useState(false);
+
+    const { vehicles, status } = useVehicleSocket();
 
     useEffect(() => {
         if (mapRef.current) return;
@@ -36,13 +39,13 @@ export default function Map() {
 
     return (
         <div className="flex flex-1 overflow-hidden">
-            <Sidebar map={mapRef.current} />
+            <Sidebar map={mapRef.current} status={status} />
             <div ref={mapContainerRef} className="flex-1 relative">
                 {mapReady && (
                     <>
                         <Geofences map={mapRef.current} />
-                        <VehicleTrails map={mapRef.current} />
-                        <VehicleMarkers map={mapRef.current} />
+                        <VehicleTrails map={mapRef.current} vehicles={vehicles} />
+                        <VehicleMarkers map={mapRef.current} vehicles={vehicles} />
                         <LayerControls map={mapRef.current} />
                     </>
                 )}

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import maplibregl from "maplibre-gl";
-import { simulateMovement, vehicles } from "../data/vehicles";
+import { simulateMovement, Vehicle, vehicles } from "../data/vehicles";
 
 const statusColors: Record<string, string> = {
     moving: "#22c55e",
@@ -10,7 +10,7 @@ const statusColors: Record<string, string> = {
     offline: "#ef4444",
 };
 
-function vehicleToGeojson(): GeoJSON.FeatureCollection {
+function vehicleToGeojson(vehicles: Vehicle[]): GeoJSON.FeatureCollection {
     return {
         type: "FeatureCollection",
         features: vehicles.map((v) => ({
@@ -29,14 +29,19 @@ function vehicleToGeojson(): GeoJSON.FeatureCollection {
     };
 }
 
-export default function VehicleMarkers({ map }: { map: maplibregl.Map | null }) {
+interface Props {
+    map: maplibregl.Map | null;
+    vehicles: Vehicle[];
+}
+
+export default function VehicleMarkers({ map, vehicles }: Props) {
     useEffect(() => {
         if (!map) return;
 
         // Add GeoJSON source with clustereing enabled
         map.addSource("vehicles", {
             type: "geojson",
-            data: vehicleToGeojson(),
+            data: { type: "FeatureCollection", features: [] },
             cluster: true,
             clusterMaxZoom: 14,
             clusterRadius: 50,
@@ -132,23 +137,22 @@ export default function VehicleMarkers({ map }: { map: maplibregl.Map | null }) 
         map.on("mouseenter", "unclustered-point", () => { map.getCanvas().style.cursor = "pointer" });
         map.on("mouseleave", "unclustered-point", () => { map.getCanvas().style.cursor = "" });
 
-        const interval = setInterval(() => {
-            simulateMovement();
-            const source = map.getSource("vehicles") as maplibregl.GeoJSONSource;
-            if (source) {
-                source.setData(vehicleToGeojson());
-            }
-        }, 1000);
-
         // cleanup
         return () => {
-            clearInterval(interval);
             if (map.getLayer("clusters")) map.removeLayer("clusters");
             if (map.getLayer("cluster-count")) map.removeLayer("cluster-count");
             if (map.getLayer("unclustered-point")) map.removeLayer("unclustered-point");
             if (map.getSource("vehicles")) map.removeSource("vehicles");
         };
     }, [map]);
+
+    useEffect(() => {
+        if (!map) return;
+        const source = map.getSource("vehicles") as maplibregl.GeoJSONSource | undefined;
+        if (source) {
+            source.setData(vehicleToGeojson(vehicles));
+        }
+    }, [map, vehicles]);
 
     return null;
 }
