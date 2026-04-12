@@ -67,12 +67,12 @@ function broadcast(wss: WebSocketServer, message: ServerMessage) {
 }
 
 // Server Setup
-const PORT = 8000;
+const PORT = 8080;
 const UPDATE_INTERVAL = 10000; // 1 Second
 
 const wss = new WebSocketServer({ port: PORT });
 
-console.log(`WebSocket server runnoing on ws://localhost:${PORT}`);
+console.log(`WebSocket server running on ws://localhost:${PORT}`);
 
 // When a new client connects
 wss.on("connection", (ws) => {

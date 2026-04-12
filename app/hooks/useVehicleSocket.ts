@@ -14,7 +14,7 @@ export interface Vehicle {
     trail: [number, number][];
 }
 
-export type ConnectionStatus = "connecting" | "connected" | "disconnected";
+export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "reconnecting";
 
 interface ServerVehicle {
     id: string;
@@ -29,6 +29,11 @@ interface ServerVehicle {
 const MAX_TRAIL_LENGTH = 50;
 const WS_URL = "ws://localhost:8080";
 
+// Reconnection config
+const INITIAL_RECONNECT_DELAY = 1000;
+const MAX_RECONNECT_DELAY = 30000;
+const MAX_RECONNECT_ATTEMPTS = 10;
+
 export function useVehicleSocket() {
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [status, setStatus] = useState<ConnectionStatus>("connecting");
@@ -36,61 +41,108 @@ export function useVehicleSocket() {
 
     const trailsRef = useRef<Map<string, [number, number][]>>(new Map());
 
+    const reconnectAttemptsRef = useRef(0);
+    const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const shouldReconnectRef = useRef(true);
+
     useEffect(() => {
-        const ws = new WebSocket(WS_URL);
-        wsRef.current = ws;
 
-        ws.onopen = () => {
-            console.log("[WS] Connected");
-            setStatus("connected");
-        }
+        function connect() {
+            // If exceeded max attempts, give up
+            if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+                console.error("[WS] Max reconnect attempts reached. Giving up.");
+                setStatus("disconnected");
+                return;
+            }
+            const ws = new WebSocket(WS_URL);
+            wsRef.current = ws;
 
-        ws.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
+            ws.onopen = () => {
+                console.log("[WS] Connected");
+                setStatus("connected");
+                reconnectAttemptsRef.current = 0;
+            }
 
-                if (message.type === "welcome") {
-                    console.log("[WS] Welcome:", message.data);
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+
+                    if (message.type === "welcome") {
+                        console.log("[WS] Welcome:", message.data);
+                        return;
+                    }
+
+                    if (message.type === "vehicle-update") {
+                        const serverVehicles: ServerVehicle[] = message.data;
+
+                        serverVehicles.forEach((v) => {
+                            if (v.status !== "moving") return;
+
+                            const existing = trailsRef.current.get(v.id) ?? [];
+                            existing.push([v.lng, v.lat]);
+                            if (existing.length > MAX_TRAIL_LENGTH) existing.shift();
+                            trailsRef.current.set(v.id, existing);
+                        });
+
+                        const merged: Vehicle[] = serverVehicles.map((v) => ({
+                            ...v,
+                            trail: trailsRef.current.get(v.id) ?? [],
+                        }));
+
+                        setVehicles(merged);
+                    }
+                } catch (error) {
+                    console.error("[WS] Invalid message", error);
+                }
+            }
+
+            ws.onclose = () => {
+                console.log("[WS] Disconnected");
+                wsRef.current = null;
+
+                if (!shouldReconnectRef.current) {
+                    setStatus("disconnected");
                     return;
                 }
 
-                if (message.type === "vehicle-update") {
-                    const serverVehicles: ServerVehicle[] = message.data;
+                // calculate backoff delay
+                const attempt = reconnectAttemptsRef.current;
+                const baseDelay = Math.min(INITIAL_RECONNECT_DELAY * Math.pow(2, attempt), MAX_RECONNECT_DELAY);
+                // add jitter: +-25% randomness
+                const jitter = baseDelay * (Math.random() * 0.5 - 0.25);
+                const delay = Math.max(500, baseDelay + jitter);
 
-                    serverVehicles.forEach((v) => {
-                        if (v.status !== "moving") return;
+                reconnectAttemptsRef.current += 1;
+                setStatus("reconnecting");
 
-                        const existing = trailsRef.current.get(v.id) ?? [];
-                        existing.push([v.lng, v.lat]);
-                        if (existing.length > MAX_TRAIL_LENGTH) existing.shift();
-                        trailsRef.current.set(v.id, existing);
-                    });
+                console.log(`[WS] Reconnecting in ${Math.round(delay)}ms (attempt ${attempt + 1})`);
 
-                    const merged: Vehicle[] = serverVehicles.map((v) => ({
-                        ...v,
-                        trail: trailsRef.current.get(v.id) ?? [],
-                    }));
-
-                    setVehicles(merged);
-                }
-            } catch (error) {
-                console.error("[WS] Invalid message", error);
+                reconnectTimeoutRef.current = setTimeout(() => {
+                    connect();
+                }, delay);
+            }
+            ws.onerror = (err) => {
+                console.error("[WS] Error:", err);
+                setStatus("disconnected");
             }
         }
 
-        ws.onclose = () => {
-            console.log("[WS] Disconnected");
-            setStatus("disconnected");
-        }
 
-        ws.onerror = (err) => {
-            console.error("[WS] Error:", err);
-            setStatus("disconnected");
-        }
+        shouldReconnectRef.current = true;
+        connect();
 
         return () => {
-            ws.close();
-            wsRef.current = null;
+            shouldReconnectRef.current = false;
+
+            if (reconnectTimeoutRef.current) {
+                clearTimeout(reconnectTimeoutRef.current);
+                reconnectTimeoutRef.current = null;
+            }
+
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
         };
     }, []);
 
