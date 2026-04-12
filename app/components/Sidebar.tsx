@@ -2,18 +2,16 @@
 
 import { useEffect, useState } from "react";
 import maplibregl from "maplibre-gl";
-import { vehicles } from "../data/vehicles";
+import { Vehicle, vehicles } from "../data/vehicles";
+import { ConnectionStatus } from "../hooks/useVehicleSocket";
 
-export default function Sidebar({ map }: { map: maplibregl.Map | null }) {
-    const [, setTick] = useState(0);
+interface Props {
+    map: maplibregl.Map | null;
+    vehicles: Vehicle[];
+    status: ConnectionStatus;
+}
 
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setTick((t) => t + 1);
-        }, 1000);
-        return () => clearInterval(interval);
-    }, [])
-
+export default function Sidebar({ map, vehicles, status }: Props) {
     const movingCount = vehicles.filter((v) => v.status === "moving").length;
     const idleCount = vehicles.filter((v) => v.status === "idle").length;
     const offlineCount = vehicles.filter((v) => v.status === "offline").length;
@@ -26,11 +24,23 @@ export default function Sidebar({ map }: { map: maplibregl.Map | null }) {
         map.flyTo({ center: [lng, lat], zoom: 14, duration: 1000 });
     }
 
+    const statusConfig = {
+        connecting: { color: "bg-yellow-500", label: "Connecting..." },
+        connected: { color: "bg-green-500", label: "Live" },
+        disconnected: { color: "bg-red-500", label: "Disconnected" }
+    }
+
     return (
         <div className="w-80 bg-gray-900 border-r border-gray-800 flex flex-col overflow-hidden">
-            {/* Header */}
+            {/* Header with connection status */}
             <div className="p-4 border-b border-gray-800">
-                <h2 className="text-lg font-bold">Fleet Overview</h2>
+                <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold">Fleet Overview</h2>
+                    <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${statusConfig[status].color} ${status === "connected" ? "animate-pulse" : ""}`} />
+                        <span className="text-xs text-gray-400">{statusConfig[status].label}</span>
+                    </div>
+                </div>
                 <p className="text-sm text-gray-400 mt-1">{vehicles.length} total vehicles</p>
             </div>
 
@@ -57,9 +67,7 @@ export default function Sidebar({ map }: { map: maplibregl.Map | null }) {
             {/* Vehicle List */}
             <div className="flex-1 overflow-y-auto">
                 <div className="p-4">
-                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                        Vehicles
-                    </h3>
+                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Vehicles</h3>
                     <div className="flex flex-col gap-2">
                         {vehicles.map((v) => (
                             <button
@@ -81,20 +89,11 @@ export default function Sidebar({ map }: { map: maplibregl.Map | null }) {
                                         {v.status === "moving" ? `${Math.round(v.speed)} km/h` : v.status}
                                     </p>
                                 </div>
-                                <svg
-                                    className="w-4 h-4 text-gray-500 flex-shrink-0"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                >
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                </svg>
                             </button>
                         ))}
                     </div>
                 </div>
             </div>
         </div>
-    )
+    );
 }

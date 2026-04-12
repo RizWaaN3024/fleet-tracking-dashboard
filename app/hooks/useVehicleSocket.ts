@@ -10,8 +10,8 @@ export interface Vehicle {
     speed: number;
     lng: number;
     lat: number;
-    headning: number;
-    trail: [number, number];
+    heading: number;
+    trail: [number, number][];
 }
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected";
@@ -27,7 +27,7 @@ interface ServerVehicle {
 }
 
 const MAX_TRAIL_LENGTH = 50;
-const WS_URL = "es://localhost:8080";
+const WS_URL = "ws://localhost:8080";
 
 export function useVehicleSocket() {
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);

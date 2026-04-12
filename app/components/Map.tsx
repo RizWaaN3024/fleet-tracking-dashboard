@@ -39,7 +39,7 @@ export default function Map() {
 
     return (
         <div className="flex flex-1 overflow-hidden">
-            <Sidebar map={mapRef.current} status={status} />
+            <Sidebar map={mapRef.current} vehicles={vehicles} status={status} />
             <div ref={mapContainerRef} className="flex-1 relative">
                 {mapReady && (
                     <>

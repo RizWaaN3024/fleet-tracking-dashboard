@@ -30,7 +30,7 @@ function trailsToGeoJSON(vehicles: Vehicle[]): GeoJSON.FeatureCollection {
 }
 
 interface Props {
-    map: maplibregl.Map;
+    map: maplibregl.Map | null;
     vehicles: Vehicle[];
 }
 
