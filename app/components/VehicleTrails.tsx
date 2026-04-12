@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { vehicles } from "../data/vehicles";
+import { Vehicle, vehicles } from "../data/vehicles";
 import maplibregl from "maplibre-gl";
 
 const statusColors: Record<string, string> = {
@@ -10,7 +10,7 @@ const statusColors: Record<string, string> = {
     offline: "#ef4444",
 };
 
-function trailsToGeoJSON(): GeoJSON.FeatureCollection {
+function trailsToGeoJSON(vehicles: Vehicle[]): GeoJSON.FeatureCollection {
     return {
         type: "FeatureCollection",
         features: vehicles
@@ -29,13 +29,18 @@ function trailsToGeoJSON(): GeoJSON.FeatureCollection {
     };
 }
 
-export default function VehicleTrails({ map }: { map: maplibregl.Map | null }) {
+interface Props {
+    map: maplibregl.Map;
+    vehicles: Vehicle[];
+}
+
+export default function VehicleTrails({ map, vehicles }: Props) {
     useEffect(() => {
         if (!map) return;
 
         map.addSource("trails", {
             type: "geojson",
-            data: trailsToGeoJSON(),
+            data: { type: "FeatureCollection", features: [] },
         });
 
         map.addLayer({
@@ -60,19 +65,19 @@ export default function VehicleTrails({ map }: { map: maplibregl.Map | null }) {
             },
         });
 
-        const interval = setInterval(() => {
-            const source = map.getSource("trails") as maplibregl.GeoJSONSource;
-            if (source) {
-                source.setData(trailsToGeoJSON());
-            }
-        }, 1000);
-
         return () => {
-            clearInterval(interval);
             if (map.getLayer("trail-lines")) map.removeLayer("trail-lines");
             if (map.getSource("trails")) map.removeSource("trails");
         };
     }, [map]);
+
+    useEffect(() => {
+        if (!map) return;
+        const source = map.getSource("trails") as maplibregl.GeoJSONSource | undefined;
+        if (source) {
+            source.setData(trailsToGeoJSON(vehicles));
+        }
+    }, [map, vehicles]);
 
     return null;
 }
