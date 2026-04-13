@@ -28,8 +28,8 @@ export function useGeofenceAlerts() {
                     alertsRef.current = [alert, ...alertsRef.current].slice(0, MAX_ALERTS);
                     setAlerts([...alertsRef.current]);
                 }
-            } catch (error) {
-
+            } catch {
+                // ignore — non-JSON or unrelated message
             }
         }
 

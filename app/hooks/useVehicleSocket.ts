@@ -67,6 +67,9 @@ export function useVehicleSocket() {
                 try {
                     const message = JSON.parse(event.data);
 
+                    // Re-emit for other hooks to consume
+                    window.dispatchEvent(new MessageEvent("ws-message", { data: event.data }));
+
                     if (message.type === "welcome") {
                         console.log("[WS] Welcome:", message.data);
                         return;

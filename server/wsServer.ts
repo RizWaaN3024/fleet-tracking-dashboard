@@ -80,7 +80,7 @@ function simulateMovement() {
         if (v.status !== "moving") return;
 
         v.heading += (Math.random() - 0.5) * 30;
-        const rad = (v.heading * Math.PI) / 100;
+        const rad = (v.heading * Math.PI) / 180;
         const distance = v.speed * 0.00002;
 
         v.lng += Math.sin(rad) * distance;

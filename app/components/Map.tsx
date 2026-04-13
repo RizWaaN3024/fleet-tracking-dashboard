@@ -8,6 +8,7 @@ import VehicleMarkers from "./VehicleMarkers";
 import LayerControls from "./LayerControls";
 import Sidebar from "./Sidebar";
 import { useVehicleSocket } from "../hooks/useVehicleSocket";
+import AlertsPanel from "./AlertsPanel";
 
 export default function Map() {
     const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -47,6 +48,7 @@ export default function Map() {
                         <VehicleTrails map={mapRef.current} vehicles={vehicles} />
                         <VehicleMarkers map={mapRef.current} vehicles={vehicles} />
                         <LayerControls map={mapRef.current} />
+                        <AlertsPanel />
                     </>
                 )}
             </div>
