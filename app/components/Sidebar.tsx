@@ -27,7 +27,8 @@ export default function Sidebar({ map, vehicles, status }: Props) {
     const statusConfig = {
         connecting: { color: "bg-yellow-500", label: "Connecting..." },
         connected: { color: "bg-green-500", label: "Live" },
-        disconnected: { color: "bg-red-500", label: "Disconnected" }
+        disconnected: { color: "bg-red-500", label: "Disconnected" },
+        reconnecting: { color: "bg-orange-500", label: "Reconnecting..." },
     }
 
     return (

@@ -1,4 +1,5 @@
 import { WebSocketServer, WebSocket } from "ws";
+import * as turf from "@turf/turf";
 
 interface Vehicle {
     id: string;
@@ -8,6 +9,13 @@ interface Vehicle {
     lng: number;
     lat: number;
     heading: number;
+}
+
+interface Geofence {
+    id: string;
+    name: string;
+    type: "warehouse" | "restricted" | "delivery-zone";
+    coordinates: [number, number][];
 }
 
 const vehicles: Vehicle[] = [
@@ -23,6 +31,50 @@ const vehicles: Vehicle[] = [
     { id: "v10", name: "Van B4", status: "offline", speed: 0, lng: 77.6250, lat: 13.0100, heading: 0 },
 ];
 
+const geofences: Geofence[] = [
+    {
+        id: "gf1",
+        name: "Central Warehouse",
+        type: "warehouse",
+        coordinates: [
+            [77.5850, 12.9780],
+            [77.6000, 12.9780],
+            [77.6000, 12.9680],
+            [77.5850, 12.9680],
+            [77.5850, 12.9780],
+        ],
+    },
+    {
+        id: "gf2",
+        name: "Airport Restricted Zone",
+        type: "restricted",
+        coordinates: [
+            [77.6800, 12.9500],
+            [77.7100, 12.9500],
+            [77.7100, 12.9300],
+            [77.6800, 12.9300],
+            [77.6800, 12.9500],
+        ],
+    },
+    {
+        id: "gf3",
+        name: "North Delivery Zone",
+        type: "delivery-zone",
+        coordinates: [
+            [77.5600, 13.0050],
+            [77.6000, 13.0150],
+            [77.6200, 13.0050],
+            [77.6000, 12.9900],
+            [77.5600, 13.0050],
+        ],
+    },
+];
+
+// State Tracking
+// Map<vehicleId, Set<geofenceId>> - which zones each vehicle is currently inside
+const vehicleZones = new Map<string, Set<string>>();
+
+
 function simulateMovement() {
     vehicles.forEach((v) => {
         if (v.status !== "moving") return;
@@ -35,6 +87,68 @@ function simulateMovement() {
         v.lat += Math.cos(rad) * distance;
         v.speed = Math.max(10, Math.min(80, v.speed + (Math.random() - 0.5) * 5));
     });
+}
+
+// Geofence Detection
+interface GeofenceEvent {
+    vehicleId: string;
+    vehicleName: string;
+    geofenceId: string;
+    geofenceName: string;
+    geofenceType: string;
+    event: "enter" | "exit";
+    timestamp: number;
+}
+
+function detectGeofenceEvents(): GeofenceEvent[] {
+    const events: GeofenceEvent[] = [];
+
+    vehicles.forEach((v) => {
+        const point = turf.point([v.lng, v.lat]);
+        const previousZones = vehicleZones.get(v.id);
+        const currentZones = new Set<string>();
+
+        geofences.forEach((gf) => {
+            const polygon = turf.polygon([gf.coordinates]);
+            const isInside = turf.booleanPointInPolygon(point, polygon);
+
+            if (isInside) {
+                currentZones.add(gf.id);
+
+                if (!previousZones?.has(gf.id)) {
+                    events.push({
+                        vehicleId: v.id,
+                        vehicleName: v.name,
+                        geofenceId: gf.id,
+                        geofenceName: gf.name,
+                        geofenceType: gf.type,
+                        event: "enter",
+                        timestamp: Date.now(),
+                    });
+                }
+            }
+        });
+
+        // Detect exits - zones that were in previousbut not in current
+        previousZones?.forEach((zoneId) => {
+            if (!currentZones.has(zoneId)) {
+                const gf = geofences.find((g) => g.id === zoneId);
+                if (!gf) return;
+                events.push({
+                    vehicleId: v.id,
+                    vehicleName: v.name,
+                    geofenceId: gf.id,
+                    geofenceName: gf.name,
+                    geofenceType: gf.type,
+                    event: "exit",
+                    timestamp: Date.now()
+                });
+            }
+        });
+
+        vehicleZones.set(v.id, currentZones);
+    });
+    return events;
 }
 
 // Message Types
@@ -54,7 +168,12 @@ interface WelcomeMessage {
     };
 }
 
-type ServerMessage = VehicleUpdateMessage | WelcomeMessage;
+interface GeofenceAlertMessage {
+    type: "geofence-alert";
+    data: GeofenceEvent;
+}
+
+type ServerMessage = VehicleUpdateMessage | WelcomeMessage | GeofenceAlertMessage;
 
 function broadcast(wss: WebSocketServer, message: ServerMessage) {
     const payload = JSON.stringify(message);
