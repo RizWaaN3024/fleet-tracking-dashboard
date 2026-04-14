@@ -188,14 +188,37 @@ function broadcast(wss: WebSocketServer, message: ServerMessage) {
 // Server Setup
 const PORT = 8080;
 const UPDATE_INTERVAL = 10000; // 1 Second
+const HEARTBEAT_INTERVAL = 25000;
+const HEARTBEAT_TIMEOUT = 60000;
+
+interface AliveWebSocket extends WebSocket {
+    isAlive?: boolean;
+}
 
 const wss = new WebSocketServer({ port: PORT });
 
 console.log(`WebSocket server running on ws://localhost:${PORT}`);
 
 // When a new client connects
-wss.on("connection", (ws) => {
+wss.on("connection", (ws: AliveWebSocket) => {
     console.log(`Client connected. Total clients: ${wss.clients.size}`);
+
+    ws.isAlive = true;
+
+    ws.on("message", (raw) => {
+        try {
+            const message = JSON.parse(raw.toString());
+
+            if (message.type === "pong") {
+                ws.isAlive = true;
+                return;
+            }
+
+            console.log("Received from client:", message);
+        } catch (error) {
+            console.error("Invalid message received", error);
+        }
+    })
 
     // Send welcome message with initial data
     const welcome: WelcomeMessage = {
@@ -242,4 +265,19 @@ wss.on("connection", (ws) => {
 
         broadcast(wss, update);
     }, UPDATE_INTERVAL);
+
+    setInterval(() => {
+        wss.clients.forEach((client: AliveWebSocket) => {
+            if (client.readyState !== WebSocket.OPEN) return;
+
+            if (client.isAlive === false) {
+                console.log("[HEARTBEAT] Client unresponsive - terminating");
+                client.terminate();
+                return;
+            }
+
+            client.isAlive = false;
+            client.send(JSON.stringify({ type: "ping", timestamp: Date.now() }));
+        })
+    }, HEARTBEAT_INTERVAL);
 })

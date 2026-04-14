@@ -48,6 +48,8 @@ export function useVehicleSocket() {
     useEffect(() => {
 
         function connect() {
+            const PONG_INTERVAL_TIMEOUT = 35000; // expect ping within 35s (server pings every 25s)
+            let pingTimeoutId: NodeJS.Timeout | null = null;
             // If exceeded max attempts, give up
             if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
                 console.error("[WS] Max reconnect attempts reached. Giving up.");
@@ -61,6 +63,12 @@ export function useVehicleSocket() {
                 console.log("[WS] Connected");
                 setStatus("connected");
                 reconnectAttemptsRef.current = 0;
+
+                // Start watching for the first ping
+                pingTimeoutId = setTimeout(() => {
+                    console.warn("[WS] No initial ping - connection dead");
+                    ws.close();
+                }, PONG_INTERVAL_TIMEOUT);
             }
 
             ws.onmessage = (event) => {
@@ -69,6 +77,18 @@ export function useVehicleSocket() {
 
                     // Re-emit for other hooks to consume
                     window.dispatchEvent(new MessageEvent("ws-message", { data: event.data }));
+
+                    if (message.type === "ping") {
+                        ws.send(JSON.stringify({ type: "pong", timestamp: Date.now() }));
+
+                        // reset the dead connection timer
+                        if (pingTimeoutId) clearTimeout(pingTimeoutId);
+                        pingTimeoutId = setTimeout(() => {
+                            console.warn("[WS] No ping received in time - connection dead, forcing reconnect");
+                            ws.close();
+                        }, PONG_INTERVAL_TIMEOUT);
+                        return;
+                    }
 
                     if (message.type === "welcome") {
                         console.log("[WS] Welcome:", message.data);
@@ -102,6 +122,11 @@ export function useVehicleSocket() {
             ws.onclose = () => {
                 console.log("[WS] Disconnected");
                 wsRef.current = null;
+
+                if (pingTimeoutId) {
+                    clearTimeout(pingTimeoutId);
+                    pingTimeoutId = null;
+                }
 
                 if (!shouldReconnectRef.current) {
                     setStatus("disconnected");
