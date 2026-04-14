@@ -70,6 +70,30 @@ const geofences: Geofence[] = [
     },
 ];
 
+interface HistoryPoint {
+    lng: number;
+    lat: number;
+    speed: number;
+    status: string;
+    timestamp: number;
+}
+
+const MAX_HISTORY = 1000;
+const vehicleHistory = new Map<string, HistoryPoint[]>();
+
+interface AlertRecord {
+    vehicleId: string;
+    vehicleName: string;
+    geofenceId: string;
+    geofenceName: string;
+    geofenceType: string;
+    event: "enter" | "exit";
+    timestamp: number;
+}
+
+const alertHistory: AlertRecord[] = [];
+const MAX_ALERT_HISTORY = 500;
+
 // State Tracking
 // Map<vehicleId, Set<geofenceId>> - which zones each vehicle is currently inside
 const vehicleZones = new Map<string, Set<string>>();
