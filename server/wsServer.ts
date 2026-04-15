@@ -334,3 +334,68 @@ const REST_PORT = 8081;
 app.get("/api/vehicles", (_req, res) => {
     res.json({ vehicles });
 })
+
+// GET /api/vehicles/history - historical positions for a vehicle
+app.get("/api/vehicles/:id/history", (req, res) => {
+    const { id } = req.params;
+    const { limit, since } = req.query;
+
+    const history = vehicleHistory.get(id) ?? [];
+
+    let filtered = history;
+
+    // ?since=<timestamp> - only points after this time
+    if (since) {
+        const sinceMs = Number(since);
+        if (!isNaN(sinceMs)) {
+            filtered = filtered.filter((p) => p.timestamp >= sinceMs);
+        }
+    }
+
+    // ?limit=<n> - last N points
+    if (limit) {
+        const limitN = Number(limit);
+        if (!isNaN(limitN)) {
+            filtered = filtered.slice(-limitN);
+        }
+    }
+
+    res.json({
+        vehicleId: id,
+        count: filtered.length,
+        history: filtered,
+    });
+});
+
+// GET /api/geofences — list all geofences
+app.get("/api/geofences", (_req, res) => {
+    res.json({ geofences });
+});
+
+// GET /api/alerts — recent geofence alerts (across all vehicles)
+app.get("/api/alerts", (req, res) => {
+    const { limit, vehicleId, type } = req.query;
+    let filtered = alertHistory;
+
+    if (vehicleId) {
+        filtered = filtered.filter((a) => a.vehicleId === vehicleId);
+    }
+    if (type) {
+        filtered = filtered.filter((a) => a.geofenceType === type);
+    }
+    if (limit) {
+        const limitN = Number(limit);
+        if (!isNaN(limitN)) {
+            filtered = filtered.slice(0, limitN);
+        }
+    }
+
+    res.json({
+        count: filtered.length,
+        alerts: filtered,
+    });
+});
+
+app.listen(REST_PORT, () => {
+    console.log(`REST API is running on http://localhost:${REST_PORT}`);
+});
