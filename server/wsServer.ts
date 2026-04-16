@@ -1,7 +1,12 @@
 import { WebSocketServer, WebSocket } from "ws";
 import express from "express";
 import cors from "cors";
+import http from "http";
 import * as turf from "@turf/turf";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface Vehicle {
     id: string;
@@ -19,6 +24,76 @@ interface Geofence {
     type: "warehouse" | "restricted" | "delivery-zone";
     coordinates: [number, number][];
 }
+
+interface HistoryPoint {
+    lng: number;
+    lat: number;
+    speed: number;
+    status: string;
+    timestamp: number;
+}
+
+interface GeofenceEvent {
+    vehicleId: string;
+    vehicleName: string;
+    geofenceId: string;
+    geofenceName: string;
+    geofenceType: string;
+    event: "enter" | "exit";
+    timestamp: number;
+}
+
+interface VehicleUpdateMessage {
+    type: "vehicle-update";
+    data: Vehicle[];
+    timestamp: number;
+}
+
+interface WelcomeMessage {
+    type: "welcome";
+    data: {
+        vehicleCount: number;
+        updateInterval: number;
+    };
+}
+
+interface GeofenceAlertMessage {
+    type: "geofence-alert";
+    data: GeofenceEvent;
+}
+
+interface PingMessage {
+    type: "ping";
+    timestamp: number;
+}
+
+type ServerMessage =
+    | VehicleUpdateMessage
+    | WelcomeMessage
+    | GeofenceAlertMessage
+    | PingMessage;
+
+interface AliveWebSocket extends WebSocket {
+    isAlive?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
+
+const PORT = Number(process.env.PORT) || 8080;
+const UPDATE_INTERVAL = 1000;
+const HEARTBEAT_INTERVAL = 25000;
+const MAX_HISTORY = 1000;
+const MAX_ALERT_HISTORY = 500;
+
+// CORS: allow specific origins from env, or allow all in dev
+const ALLOWED_ORIGINS =
+    process.env.ALLOWED_ORIGINS?.split(",").map((s) => s.trim()) ?? ["*"];
+
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
 
 const vehicles: Vehicle[] = [
     { id: "v1", name: "Truck A1", status: "moving", speed: 42, lng: 77.5946, lat: 12.9716, heading: 45 },
@@ -72,34 +147,17 @@ const geofences: Geofence[] = [
     },
 ];
 
-interface HistoryPoint {
-    lng: number;
-    lat: number;
-    speed: number;
-    status: string;
-    timestamp: number;
-}
+// ---------------------------------------------------------------------------
+// In-memory state
+// ---------------------------------------------------------------------------
 
-const MAX_HISTORY = 1000;
 const vehicleHistory = new Map<string, HistoryPoint[]>();
-
-interface AlertRecord {
-    vehicleId: string;
-    vehicleName: string;
-    geofenceId: string;
-    geofenceName: string;
-    geofenceType: string;
-    event: "enter" | "exit";
-    timestamp: number;
-}
-
-const alertHistory: AlertRecord[] = [];
-const MAX_ALERT_HISTORY = 500;
-
-// State Tracking
-// Map<vehicleId, Set<geofenceId>> - which zones each vehicle is currently inside
+const alertHistory: GeofenceEvent[] = [];
 const vehicleZones = new Map<string, Set<string>>();
 
+// ---------------------------------------------------------------------------
+// Business logic
+// ---------------------------------------------------------------------------
 
 function simulateMovement() {
     const now = Date.now();
@@ -115,29 +173,17 @@ function simulateMovement() {
         v.lat += Math.cos(rad) * distance;
         v.speed = Math.max(10, Math.min(80, v.speed + (Math.random() - 0.5) * 5));
 
-        // record history
         const history = vehicleHistory.get(v.id) ?? [];
         history.push({
             lng: v.lng,
             lat: v.lat,
             speed: v.speed,
             status: v.status,
-            timestamp: now
+            timestamp: now,
         });
         if (history.length > MAX_HISTORY) history.shift();
         vehicleHistory.set(v.id, history);
     });
-}
-
-// Geofence Detection
-interface GeofenceEvent {
-    vehicleId: string;
-    vehicleName: string;
-    geofenceId: string;
-    geofenceName: string;
-    geofenceType: string;
-    event: "enter" | "exit";
-    timestamp: number;
 }
 
 function detectGeofenceEvents(): GeofenceEvent[] {
@@ -169,7 +215,6 @@ function detectGeofenceEvents(): GeofenceEvent[] {
             }
         });
 
-        // Detect exits - zones that were in previousbut not in current
         previousZones?.forEach((zoneId) => {
             if (!currentZones.has(zoneId)) {
                 const gf = geofences.find((g) => g.id === zoneId);
@@ -181,50 +226,100 @@ function detectGeofenceEvents(): GeofenceEvent[] {
                     geofenceName: gf.name,
                     geofenceType: gf.type,
                     event: "exit",
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
                 });
             }
         });
 
         vehicleZones.set(v.id, currentZones);
     });
-    // Persist to history
-    events.forEach((e) => {
-        alertHistory.unshift(e);
-    });
+
+    events.forEach((e) => alertHistory.unshift(e));
     if (alertHistory.length > MAX_ALERT_HISTORY) {
         alertHistory.length = MAX_ALERT_HISTORY;
     }
+
     return events;
 }
 
-// Message Types
-// Every WebSocket message has a "type" so the client knows what it is
+// ---------------------------------------------------------------------------
+// Express (REST API)
+// ---------------------------------------------------------------------------
 
-interface VehicleUpdateMessage {
-    type: "vehicle-update";
-    data: Vehicle[];
-    timestamp: number;
-}
+const app = express();
+app.use(cors({ origin: ALLOWED_ORIGINS.includes("*") ? true : ALLOWED_ORIGINS }));
+app.use(express.json());
 
-interface WelcomeMessage {
-    type: "welcome";
-    data: {
-        vehicleCount: number;
-        updateInterval: number;
-    };
-}
+// Health check — Railway/Render ping this to verify the service is alive
+app.get("/health", (_req, res) => {
+    res.json({
+        status: "ok",
+        uptime: process.uptime(),
+        clients: wss?.clients.size ?? 0,
+    });
+});
 
-interface GeofenceAlertMessage {
-    type: "geofence-alert";
-    data: GeofenceEvent;
-}
+app.get("/api/vehicles", (_req, res) => {
+    res.json({ vehicles });
+});
 
-type ServerMessage = VehicleUpdateMessage | WelcomeMessage | GeofenceAlertMessage;
+app.get("/api/vehicles/:id/history", (req, res) => {
+    const { id } = req.params;
+    const { limit, since } = req.query;
 
-function broadcast(wss: WebSocketServer, message: ServerMessage) {
+    let history = vehicleHistory.get(id) ?? [];
+
+    if (since) {
+        const sinceMs = Number(since);
+        if (!isNaN(sinceMs)) {
+            history = history.filter((p) => p.timestamp >= sinceMs);
+        }
+    }
+
+    if (limit) {
+        const limitN = Number(limit);
+        if (!isNaN(limitN)) {
+            history = history.slice(-limitN);
+        }
+    }
+
+    res.json({
+        vehicleId: id,
+        count: history.length,
+        history,
+    });
+});
+
+app.get("/api/geofences", (_req, res) => {
+    res.json({ geofences });
+});
+
+app.get("/api/alerts", (req, res) => {
+    const { limit, vehicleId, type } = req.query;
+    let filtered = alertHistory;
+
+    if (vehicleId) filtered = filtered.filter((a) => a.vehicleId === vehicleId);
+    if (type) filtered = filtered.filter((a) => a.geofenceType === type);
+    if (limit) {
+        const limitN = Number(limit);
+        if (!isNaN(limitN)) filtered = filtered.slice(0, limitN);
+    }
+
+    res.json({
+        count: filtered.length,
+        alerts: filtered,
+    });
+});
+
+// ---------------------------------------------------------------------------
+// HTTP server + WebSocket server (shared port)
+// ---------------------------------------------------------------------------
+
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
+
+function broadcast(message: ServerMessage) {
     const payload = JSON.stringify(message);
-
     wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(payload);
@@ -232,84 +327,70 @@ function broadcast(wss: WebSocketServer, message: ServerMessage) {
     });
 }
 
-// Server Setup
-const PORT = 8080;
-const UPDATE_INTERVAL = 1000; // 1 second
-const HEARTBEAT_INTERVAL = 25000;
-
-interface AliveWebSocket extends WebSocket {
-    isAlive?: boolean;
-}
-
-const wss = new WebSocketServer({ port: PORT });
-console.log(`WebSocket server running on ws://localhost:${PORT}`);
-
-// When a new client connects
 wss.on("connection", (ws: AliveWebSocket) => {
     console.log(`Client connected. Total clients: ${wss.clients.size}`);
-
     ws.isAlive = true;
 
     ws.on("message", (raw) => {
         try {
             const message = JSON.parse(raw.toString());
-
             if (message.type === "pong") {
                 ws.isAlive = true;
                 return;
             }
-
             console.log("Received from client:", message);
         } catch (error) {
             console.error("Invalid message received", error);
         }
-    })
+    });
 
-    // Send welcome message with initial data
-    const welcome: WelcomeMessage = {
-        type: "welcome",
-        data: {
-            vehicleCount: vehicles.length,
-            updateInterval: UPDATE_INTERVAL,
-        },
-    };
-    ws.send(JSON.stringify(welcome));
+    // welcome + initial state
+    ws.send(
+        JSON.stringify({
+            type: "welcome",
+            data: {
+                vehicleCount: vehicles.length,
+                updateInterval: UPDATE_INTERVAL,
+            },
+        } satisfies WelcomeMessage)
+    );
 
-    // Send current vehicle positions immediately
-    const initialUpdate: VehicleUpdateMessage = {
-        type: "vehicle-update",
-        data: vehicles,
-        timestamp: Date.now()
-    };
-    ws.send(JSON.stringify(initialUpdate));
+    ws.send(
+        JSON.stringify({
+            type: "vehicle-update",
+            data: vehicles,
+            timestamp: Date.now(),
+        } satisfies VehicleUpdateMessage)
+    );
 
-    // When client disconnects
     ws.on("close", () => {
         console.log(`Client disconnected. Total clients: ${wss.clients.size}`);
     });
 });
 
-// Simulation + broadcast (runs once, shared across all clients)
-setInterval(() => {
+// ---------------------------------------------------------------------------
+// Intervals
+// ---------------------------------------------------------------------------
+
+const simulationInterval = setInterval(() => {
     simulateMovement();
 
-    const update: VehicleUpdateMessage = {
+    broadcast({
         type: "vehicle-update",
         data: vehicles,
         timestamp: Date.now(),
-    };
-    broadcast(wss, update);
+    });
 
-    // detect and broadcast geofence events
     const events = detectGeofenceEvents();
     events.forEach((event) => {
-        console.log(`[GEOFENCE] ${event.vehicleName} ${event.event}ed ${event.geofenceName}`);
-        broadcast(wss, { type: "geofence-alert", data: event });
+        console.log(
+            `[GEOFENCE] ${event.vehicleName} ${event.event}ed ${event.geofenceName}`
+        );
+        broadcast({ type: "geofence-alert", data: event });
     });
 }, UPDATE_INTERVAL);
 
-// Heartbeat (also runs once, shared across all clients)
-setInterval(() => {
+const heartbeatInterval = setInterval(() => {
     wss.clients.forEach((client: AliveWebSocket) => {
         if (client.readyState !== WebSocket.OPEN) return;
 
@@ -321,81 +402,41 @@ setInterval(() => {
 
         client.isAlive = false;
         client.send(JSON.stringify({ type: "ping", timestamp: Date.now() }));
-    })
+    });
 }, HEARTBEAT_INTERVAL);
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+// ---------------------------------------------------------------------------
+// Start + graceful shutdown
+// ---------------------------------------------------------------------------
 
-const REST_PORT = 8081;
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`  HTTP:      http://localhost:${PORT}`);
+    console.log(`  WebSocket: ws://localhost:${PORT}`);
+    console.log(`  Allowed origins: ${ALLOWED_ORIGINS.join(", ")}`);
+});
 
-// GET /api/vehicles - list all vehicles with current state
-app.get("/api/vehicles", (_req, res) => {
-    res.json({ vehicles });
-})
+function shutdown(signal: string) {
+    console.log(`\nReceived ${signal}, shutting down gracefully...`);
 
-// GET /api/vehicles/history - historical positions for a vehicle
-app.get("/api/vehicles/:id/history", (req, res) => {
-    const { id } = req.params;
-    const { limit, since } = req.query;
+    clearInterval(simulationInterval);
+    clearInterval(heartbeatInterval);
 
-    const history = vehicleHistory.get(id) ?? [];
+    wss.clients.forEach((client) => client.close(1001, "Server shutting down"));
 
-    let filtered = history;
-
-    // ?since=<timestamp> - only points after this time
-    if (since) {
-        const sinceMs = Number(since);
-        if (!isNaN(sinceMs)) {
-            filtered = filtered.filter((p) => p.timestamp >= sinceMs);
-        }
-    }
-
-    // ?limit=<n> - last N points
-    if (limit) {
-        const limitN = Number(limit);
-        if (!isNaN(limitN)) {
-            filtered = filtered.slice(-limitN);
-        }
-    }
-
-    res.json({
-        vehicleId: id,
-        count: filtered.length,
-        history: filtered,
+    wss.close(() => {
+        server.close(() => {
+            console.log("Server closed cleanly");
+            process.exit(0);
+        });
     });
-});
 
-// GET /api/geofences — list all geofences
-app.get("/api/geofences", (_req, res) => {
-    res.json({ geofences });
-});
+    // force exit if graceful shutdown hangs
+    setTimeout(() => {
+        console.error("Forced shutdown after timeout");
+        process.exit(1);
+    }, 10000);
+}
 
-// GET /api/alerts — recent geofence alerts (across all vehicles)
-app.get("/api/alerts", (req, res) => {
-    const { limit, vehicleId, type } = req.query;
-    let filtered = alertHistory;
-
-    if (vehicleId) {
-        filtered = filtered.filter((a) => a.vehicleId === vehicleId);
-    }
-    if (type) {
-        filtered = filtered.filter((a) => a.geofenceType === type);
-    }
-    if (limit) {
-        const limitN = Number(limit);
-        if (!isNaN(limitN)) {
-            filtered = filtered.slice(0, limitN);
-        }
-    }
-
-    res.json({
-        count: filtered.length,
-        alerts: filtered,
-    });
-});
-
-app.listen(REST_PORT, () => {
-    console.log(`REST API is running on http://localhost:${REST_PORT}`);
-});
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
