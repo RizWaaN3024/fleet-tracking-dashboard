@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "ws": "tsx server/wsServer.ts"
+    "ws": "tsx server/wsServer.ts",
+    "ws:build": "tsc -p server/tsconfig.json",
+    "ws:start": "node dist/server/wsServer.js"
   },
   "dependencies": {
     "@turf/turf": "^7.3.4",
