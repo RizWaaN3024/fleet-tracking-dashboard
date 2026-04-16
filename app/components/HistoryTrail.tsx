@@ -16,12 +16,12 @@ export default function HistoryTrail({ map, history }: Props) {
 
         map.addSource("history-trail", {
             type: "geojson",
-            data: { type: "FeatureCollection", features: [] };
+            data: { type: "FeatureCollection", features: [] },
         });
 
         map.addLayer({
             id: "history-line",
-            tipe: "line",
+            type: "line",
             source: "history-trail",
             paint: {
                 "line-color": "#3b82f6",
@@ -44,7 +44,7 @@ export default function HistoryTrail({ map, history }: Props) {
     useEffect(() => {
         if (!map) return;
 
-        const source = map.getSource("history-trrail") as maplibregl.GeoJSONSource | undefined;
+        const source = map.getSource("history-trail") as maplibregl.GeoJSONSource | undefined;
         if (!source) return;
 
         if (history.length < 2) {

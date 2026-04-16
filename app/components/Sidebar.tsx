@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from "react";
 import maplibregl from "maplibre-gl";
-import { Vehicle, vehicles } from "../data/vehicles";
+import { Vehicle } from "../data/vehicles";
 import { ConnectionStatus } from "../hooks/useVehicleSocket";
+import { fetchVehicleHistory, HistoryPoint } from "../lib/api";
 
 interface Props {
     map: maplibregl.Map | null;
     vehicles: Vehicle[];
     status: ConnectionStatus;
+    onHistoryLoaded?: (history: HistoryPoint[]) => void;
 }
 
-export default function Sidebar({ map, vehicles, status }: Props) {
+export default function Sidebar({ map, vehicles, status, onHistoryLoaded }: Props) {
     const movingCount = vehicles.filter((v) => v.status === "moving").length;
     const idleCount = vehicles.filter((v) => v.status === "idle").length;
     const offlineCount = vehicles.filter((v) => v.status === "offline").length;
@@ -19,9 +21,22 @@ export default function Sidebar({ map, vehicles, status }: Props) {
         vehicles.filter((v) => v.status === "moving").reduce((sum, v) => sum + v.speed, 0) / (movingCount || 1)
     );
 
-    function focusVehicle(lng: number, lat: number) {
+    const [loadingId, setLoadingId] = useState<string | null>(null);
+
+    async function focusVehicle(vehicleId: string, lng: number, lat: number) {
         if (!map) return;
+
         map.flyTo({ center: [lng, lat], zoom: 14, duration: 1000 });
+
+        setLoadingId(vehicleId);
+        try {
+            const history = await fetchVehicleHistory(vehicleId, { limit: 200 });
+            onHistoryLoaded?.(history);
+        } catch (error) {
+            console.error("Failed to load history", error);
+        } finally {
+            setLoadingId(null);
+        }
     }
 
     const statusConfig = {
@@ -73,7 +88,7 @@ export default function Sidebar({ map, vehicles, status }: Props) {
                         {vehicles.map((v) => (
                             <button
                                 key={v.id}
-                                onClick={() => focusVehicle(v.lng, v.lat)}
+                                onClick={() => focusVehicle(v.id, v.lng, v.lat)}
                                 className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors text-left w-full"
                             >
                                 <span
@@ -87,7 +102,8 @@ export default function Sidebar({ map, vehicles, status }: Props) {
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-medium truncate">{v.name}</p>
                                     <p className="text-xs text-gray-400">
-                                        {v.status === "moving" ? `${Math.round(v.speed)} km/h` : v.status}
+                                        {loadingId === v.id ? "Loading history..." :
+                                            v.status === "moving" ? `${Math.round(v.speed)} km/h` : v.status}
                                     </p>
                                 </div>
                             </button>

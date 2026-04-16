@@ -9,7 +9,7 @@ export interface HistoryPoint {
 }
 
 export interface AlertRecord {
-    vehicelId: string;
+    vehicleId: string;
     vehicleName: string;
     geofenceId: string;
     geofenceName: string;

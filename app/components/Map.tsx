@@ -9,11 +9,14 @@ import LayerControls from "./LayerControls";
 import Sidebar from "./Sidebar";
 import { useVehicleSocket } from "../hooks/useVehicleSocket";
 import AlertsPanel from "./AlertsPanel";
+import HistoryTrail from "./HistoryTrail";
+import type { HistoryPoint } from "../lib/api";
 
 export default function Map() {
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<maplibregl.Map | null>(null);
     const [mapReady, setMapReady] = useState(false);
+    const [history, setHistory] = useState<HistoryPoint[]>([]);
 
     const { vehicles, status } = useVehicleSocket();
 
@@ -40,12 +43,18 @@ export default function Map() {
 
     return (
         <div className="flex flex-1 overflow-hidden">
-            <Sidebar map={mapRef.current} vehicles={vehicles} status={status} />
+            <Sidebar
+                map={mapRef.current}
+                vehicles={vehicles}
+                status={status}
+                onHistoryLoaded={setHistory}
+            />
             <div ref={mapContainerRef} className="flex-1 relative">
                 {mapReady && (
                     <>
                         <Geofences map={mapRef.current} />
                         <VehicleTrails map={mapRef.current} vehicles={vehicles} />
+                        <HistoryTrail map={mapRef.current} history={history} />
                         <VehicleMarkers map={mapRef.current} vehicles={vehicles} />
                         <LayerControls map={mapRef.current} />
                         <AlertsPanel />
