@@ -21,7 +21,7 @@ export default function AlertsPanel() {
     if (alerts.length === 0) return null;
 
     return (
-        <div className="absolute bottom-4 right-4 w-80 max-h-[50vh] overflow-y-auto flex flex-col gap-2 z-10">
+        <div className="absolute bottom-3 right-3 left-3 sm:left-auto sm:bottom-4 sm:right-4 sm:w-80 max-h-[40vh] sm:max-h-[50vh] overflow-y-auto flex flex-col gap-2 z-10">
             {alerts.map((alert, i) => {
                 const colors = alertColors[alert.geofenceType] ?? alertColors.warehouse;
                 return (
@@ -46,7 +46,7 @@ export default function AlertsPanel() {
                             </div>
                             <button
                                 onClick={() => dismissAlert(i)}
-                                className="text-gray-500 hover:text-gray-300 text-xs"
+                                className="text-gray-500 hover:text-gray-300 text-xs p-1 -m-1"
                                 aria-label="Dismiss alert"
                             >
                                 ✕

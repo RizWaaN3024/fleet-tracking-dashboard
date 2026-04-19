@@ -4,7 +4,7 @@ Real-time fleet tracking dashboard built with MapLibre GL JS, Next.js, and nativ
 
 ![Dashboard Screenshot](./public/dashboard-ss.png)
 
-**Live Demo:** [your-vercel-url.vercel.app](https://your-vercel-url.vercel.app)
+**Live Demo:** [fleet-tracking-dashboard-flax.vercel.app](https://fleet-tracking-dashboard-flax.vercel.app/)
 **API:** [fleet-tracking-dashboard-production.up.railway.app/health](https://fleet-tracking-dashboard-production.up.railway.app/health)
 
 ---
@@ -173,7 +173,6 @@ Given more time, the obvious next steps:
 - **Vehicle filtering by viewport** — server returns only vehicles currently visible on the map, reduces payload at scale
 - **Web Workers** for building GeoJSON off the main thread at very large scale (10k+ vehicles)
 - **Authentication** — JWT on WebSocket connect, role-based access for zones/vehicles
-- **Mobile-responsive sidebar** — currently desktop-first
 
 ---
 
