@@ -27,7 +27,7 @@ interface ServerVehicle {
 }
 
 const MAX_TRAIL_LENGTH = 50;
-const WS_URL = "ws://localhost:8080";
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080";
 
 // Reconnection config
 const INITIAL_RECONNECT_DELAY = 1000;
